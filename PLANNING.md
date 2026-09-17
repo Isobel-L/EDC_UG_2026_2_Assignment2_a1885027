@@ -80,3 +80,37 @@ The junction will need to prevent any movements whose paths overlap or cross
 
 ### Tokens
 Tokens will represent the current state of the system, such as a train being present in a section or a resource being available.
+
+## Track Section Buffer Model
+The simple buffer structure from the course notes 6.2.4 can be used to represent
+each railway section because each section can contain at most one train
+
+Each track section will have two states:
+- Free: the section is available for a train to enter
+- Occupied: a train is currently in the section
+
+A token moves between these states when a train enters or leaves the section
+
+For example, for a train to move from Section 3 to Section 7:
+- Section 3 must be occupied
+- Section 7 must be free
+- The movement transition consumes these states
+- After the movement, Section 3 becomes free and Section 7 becomes occupied
+
+This prevents two trains from occupying the same section simultaneously :) 
+
+### Simple Freight Route: 3 -> 7 -> 11
+The freight route from Section 3 through Section 7 to Section 11 can be
+modelled as two movement transitions.
+
+Move 3 -> 7:
+- Requires Section 3 occupied
+- Requires Section 7 free
+- Results in Section 3 free
+- Results in Section 7 occupied
+
+Move 7 -> 11:
+- Requires Section 7 occupied
+- Requires Section 11 free
+- Results in Section 7 free
+- Results in Section 11 occupied
