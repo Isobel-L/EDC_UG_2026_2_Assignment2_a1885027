@@ -28,38 +28,29 @@ public class InterlockingImpl implements Interlocking {
             throw new IllegalArgumentException("Train name cannot be null");
         }
 
-        // A train name cannot already belong to a train currently in the corridor.
         TrainState existingTrain = trains.get(trainName);
 
         if (existingTrain != null && existingTrain.currentSection != -1) {
             throw new IllegalArgumentException("Train name is already in use");
         }
 
-        // The entry/destination combination must correspond to a real route.
         if (!isValidRoute(entryTrackSection, destinationTrackSection)) {
             throw new IllegalArgumentException(
                     "No valid path exists between entry and destination");
         }
 
-        // The train cannot enter an occupied section.
         if (sections[entryTrackSection] != null) {
             throw new IllegalStateException("Entry track section is occupied");
         }
 
-        // Place the train into the entry section.
         sections[entryTrackSection] = trainName;
 
-        // Store its current position and intended destination.
         trains.put(
                 trainName,
                 new TrainState(entryTrackSection, destinationTrackSection)
         );
     }
 
-    /**
-     * Checks whether an entry/destination pair corresponds to
-     * one of the permitted railway routes.
-     */
     private boolean isValidRoute(int entryTrackSection,
                                  int destinationTrackSection) {
 
@@ -89,10 +80,116 @@ public class InterlockingImpl implements Interlocking {
                         && destinationTrackSection == 3);
     }
 
+    private int getNextSection(TrainState train) {
+
+        int current = train.currentSection;
+        int destination = train.destinationSection;
+
+        // Train exits on the move after reaching its destination.
+        if (current == destination) {
+            return -1;
+        }
+
+        // Passenger southbound
+        if (current == 1) {
+            return 5;
+        }
+
+        if (current == 5) {
+            if (destination == 8) {
+                return 8;
+            }
+
+            if (destination == 9) {
+                return 9;
+            }
+        }
+
+        // Passenger northbound
+        if (current == 9 && destination == 2) {
+            return 6;
+        }
+
+        if (current == 10 && destination == 2) {
+            return 6;
+        }
+
+        if (current == 6 && destination == 2) {
+            return 2;
+        }
+
+        // Freight southbound
+        if (current == 3 && destination == 4) {
+            return 4;
+        }
+
+        if (current == 3 && destination == 11) {
+            return 7;
+        }
+
+        if (current == 7 && destination == 11) {
+            return 11;
+        }
+
+        // Freight northbound
+        if (current == 4 && destination == 3) {
+            return 3;
+        }
+
+        if (current == 11 && destination == 3) {
+            return 7;
+        }
+
+        if (current == 7 && destination == 3) {
+            return 3;
+        }
+
+        throw new IllegalStateException("Train is on an invalid route");
+    }
+
     @Override
     public int moveTrains(String[] trainNames) {
-        // TODO
-        return 0;
+
+        if (trainNames == null) {
+            throw new IllegalArgumentException("Train list cannot be null");
+        }
+
+        int movedCount = 0;
+
+        for (String trainName : trainNames) {
+
+            TrainState train = trains.get(trainName);
+
+            if (train == null || train.currentSection == -1) {
+                throw new IllegalArgumentException(
+                        "Train does not exist or has already exited");
+            }
+
+            int currentSection = train.currentSection;
+            int nextSection = getNextSection(train);
+
+            // If already at destination, this move exits the corridor.
+            if (nextSection == -1) {
+                sections[currentSection] = null;
+                train.currentSection = -1;
+                movedCount++;
+                continue;
+            }
+
+            // Destination section is occupied, so the train cannot move.
+            if (sections[nextSection] != null) {
+                continue;
+            }
+
+            // Move the train to the next section.
+            sections[currentSection] = null;
+            sections[nextSection] = trainName;
+            train.currentSection = nextSection;
+
+            movedCount++;
+        }
+
+        return movedCount;
     }
 
     @Override

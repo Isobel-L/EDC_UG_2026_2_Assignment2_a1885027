@@ -35,3 +35,9 @@
 - Added data structures for train state and track-section occupancy.
 - Implemented getSection() and getTrain().
 - Implemented addTrain() with route validation, duplicate train checks and occupied entry-section checks.
+
+## 24 September 2026
+- Implemented route mapping for all valid passenger and freight paths.
+- Implemented basic moveTrains() behaviour for one-section movement and exiting the corridor.
+- Added JUnit 4 tests for train creation, section lookup, route validation, movement and exiting.
+- Ran the initial test suite successfully with all 10 tests passing.
