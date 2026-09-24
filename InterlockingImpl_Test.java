@@ -99,7 +99,7 @@ public class InterlockingImpl_Test {
         assertEquals(8, interlocking.getTrain("TrainA"));
         assertEquals("TrainA", interlocking.getSection(8));
 
-        // At its destination, the next move exits the corridor.
+        // At destination, next movement exits.
         assertEquals(
                 1,
                 interlocking.moveTrains(new String[]{"TrainA"})
@@ -129,21 +129,15 @@ public class InterlockingImpl_Test {
         interlocking.addTrain("Passenger", 1, 8);
         interlocking.addTrain("Freight", 3, 4);
 
-        /*
-         * Freight is deliberately listed first.
-         * Passenger priority must not depend on array order.
-         */
         int moved = interlocking.moveTrains(
                 new String[]{"Freight", "Passenger"}
         );
 
         assertEquals(1, moved);
 
-        // Passenger: 1 -> 5
         assertEquals(5, interlocking.getTrain("Passenger"));
         assertEquals("Passenger", interlocking.getSection(5));
 
-        // Freight must remain in Section 3.
         assertEquals(3, interlocking.getTrain("Freight"));
         assertEquals("Freight", interlocking.getSection(3));
     }
@@ -152,20 +146,14 @@ public class InterlockingImpl_Test {
     public void testNorthboundPassengerHasPriorityOverFreight() {
         interlocking.addTrain("Passenger", 9, 2);
 
-        // First move passenger from 9 -> 6.
+        // 9 -> 6
         assertEquals(
                 1,
                 interlocking.moveTrains(new String[]{"Passenger"})
         );
 
-        assertEquals(6, interlocking.getTrain("Passenger"));
-
         interlocking.addTrain("Freight", 3, 4);
 
-        /*
-         * Passenger 6 -> 2 crosses the lower passenger line.
-         * Freight 3 -> 4 crosses both passenger lines.
-         */
         int moved = interlocking.moveTrains(
                 new String[]{"Freight", "Passenger"}
         );
@@ -195,11 +183,6 @@ public class InterlockingImpl_Test {
         interlocking.addTrain("Passenger", 1, 8);
         interlocking.addTrain("Freight", 3, 4);
 
-        /*
-         * Even though only Freight is requested, Section 1 is
-         * occupied by a passenger waiting at the crossover.
-         * This follows the Petri-net priority guard.
-         */
         int moved = interlocking.moveTrains(
                 new String[]{"Freight"}
         );
@@ -213,7 +196,7 @@ public class InterlockingImpl_Test {
     public void testFreightWaitsWhileNorthboundPassengerIsWaiting() {
         interlocking.addTrain("Passenger", 9, 2);
 
-        // Move passenger 9 -> 6.
+        // 9 -> 6
         interlocking.moveTrains(new String[]{"Passenger"});
 
         interlocking.addTrain("Freight", 3, 4);
@@ -225,5 +208,192 @@ public class InterlockingImpl_Test {
         assertEquals(0, moved);
         assertEquals(6, interlocking.getTrain("Passenger"));
         assertEquals(3, interlocking.getTrain("Freight"));
+    }
+
+    // =========================================================
+    // MULTI-TRAIN MOVEMENT TESTS
+    // =========================================================
+
+    @Test
+    public void testDuplicateTrainNameMovesOnlyOnce() {
+        interlocking.addTrain("TrainA", 1, 8);
+
+        int moved = interlocking.moveTrains(
+                new String[]{"TrainA", "TrainA"}
+        );
+
+        assertEquals(1, moved);
+        assertEquals(5, interlocking.getTrain("TrainA"));
+        assertEquals("TrainA", interlocking.getSection(5));
+    }
+
+    @Test
+    public void testTwoPassengerTrainsCannotBothEnterSectionSix() {
+        interlocking.addTrain("Passenger9", 9, 2);
+        interlocking.addTrain("Passenger10", 10, 2);
+
+        int moved = interlocking.moveTrains(
+                new String[]{"Passenger9", "Passenger10"}
+        );
+
+        assertEquals(1, moved);
+
+        assertEquals(6, interlocking.getTrain("Passenger9"));
+        assertEquals(10, interlocking.getTrain("Passenger10"));
+
+        assertEquals(
+                "Passenger9",
+                interlocking.getSection(6)
+        );
+
+        assertEquals(
+                "Passenger10",
+                interlocking.getSection(10)
+        );
+    }
+
+    @Test
+    public void testInvalidTrainPreventsPartialMovement() {
+        interlocking.addTrain("TrainA", 1, 8);
+
+        try {
+            interlocking.moveTrains(
+                    new String[]{"TrainA", "DoesNotExist"}
+            );
+
+            fail("Expected IllegalArgumentException");
+
+        } catch (IllegalArgumentException exception) {
+            // Expected.
+        }
+
+        assertEquals(1, interlocking.getTrain("TrainA"));
+        assertEquals("TrainA", interlocking.getSection(1));
+        assertNull(interlocking.getSection(5));
+    }
+
+    // =========================================================
+    // FREIGHT ROUTE RESERVATION TESTS
+    // =========================================================
+
+    @Test(expected = IllegalStateException.class)
+    public void testOpposingMainFreightTrainCannotEnterReservedRoute() {
+        interlocking.addTrain("FreightSouth", 3, 11);
+
+        // The 3 -> 7 -> 11 route is already reserved.
+        interlocking.addTrain("FreightNorth", 11, 3);
+    }
+
+    @Test
+    public void testMainFreightRouteReleasedAfterExit() {
+        interlocking.addTrain("FreightSouth", 3, 11);
+
+        // 3 -> 7
+        assertEquals(
+                1,
+                interlocking.moveTrains(
+                        new String[]{"FreightSouth"}
+                )
+        );
+
+        // 7 -> 11
+        assertEquals(
+                1,
+                interlocking.moveTrains(
+                        new String[]{"FreightSouth"}
+                )
+        );
+
+        // Exit from 11.
+        assertEquals(
+                1,
+                interlocking.moveTrains(
+                        new String[]{"FreightSouth"}
+                )
+        );
+
+        assertEquals(-1, interlocking.getTrain("FreightSouth"));
+
+        // Route should now be available again.
+        interlocking.addTrain("FreightNorth", 11, 3);
+
+        assertEquals(
+                11,
+                interlocking.getTrain("FreightNorth")
+        );
+    }
+
+    @Test
+    public void testWorkshopFreightRouteReleasedAfterExit() {
+        interlocking.addTrain("FreightSouth", 3, 4);
+
+        // 3 -> 4
+        assertEquals(
+                1,
+                interlocking.moveTrains(
+                        new String[]{"FreightSouth"}
+                )
+        );
+
+        // Exit from 4.
+        assertEquals(
+                1,
+                interlocking.moveTrains(
+                        new String[]{"FreightSouth"}
+                )
+        );
+
+        // Opposite direction can now enter.
+        interlocking.addTrain("FreightNorth", 4, 3);
+
+        assertEquals(
+                4,
+                interlocking.getTrain("FreightNorth")
+        );
+    }
+
+    @Test(expected = IllegalStateException.class)
+    public void testOpposingWorkshopFreightTrainCannotEnterReservedRoute() {
+        interlocking.addTrain("FreightSouth", 3, 4);
+
+        // Workshop route is still reserved by FreightSouth.
+        interlocking.addTrain("FreightNorth", 4, 3);
+    }
+
+    @Test
+    public void testFreightRouteRemainsReservedAtDestinationUntilExit() {
+        interlocking.addTrain("FreightSouth", 3, 11);
+
+        // 3 -> 7
+        interlocking.moveTrains(
+                new String[]{"FreightSouth"}
+        );
+
+        // 7 -> 11
+        interlocking.moveTrains(
+                new String[]{"FreightSouth"}
+        );
+
+        assertEquals(11, interlocking.getTrain("FreightSouth"));
+
+        /*
+         * FreightSouth has reached its destination but has not
+         * exited yet, so the route should still be reserved.
+         */
+        try {
+
+            interlocking.addTrain(
+                    "FreightNorth",
+                    11,
+                    3
+            );
+
+            fail("Expected IllegalStateException");
+
+        } catch (IllegalStateException exception) {
+            // Expected.
+        }
+
+        assertEquals(11, interlocking.getTrain("FreightSouth"));
     }
 }

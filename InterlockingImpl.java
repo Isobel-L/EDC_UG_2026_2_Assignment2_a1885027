@@ -1,5 +1,6 @@
 import java.util.HashMap;
-import java.util.HashSet;
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.Map;
 import java.util.Set;
 
@@ -12,12 +13,23 @@ public class InterlockingImpl implements Interlocking {
     // Stores every train that has been added.
     private final Map<String, TrainState> trains = new HashMap<>();
 
+    /*
+     * These represent the two freight-route reservation tokens
+     * from the Petri-net model.
+     *
+     * null means that the route is currently available.
+     */
+    private String workshopRouteOwner = null;
+    private String mainFreightRouteOwner = null;
+
     private static class TrainState {
+        private final int entrySection;
         private int currentSection;
         private final int destinationSection;
 
-        TrainState(int currentSection, int destinationSection) {
-            this.currentSection = currentSection;
+        TrainState(int entrySection, int destinationSection) {
+            this.entrySection = entrySection;
+            this.currentSection = entrySection;
             this.destinationSection = destinationSection;
         }
     }
@@ -45,11 +57,24 @@ public class InterlockingImpl implements Interlocking {
             throw new IllegalStateException("Entry track section is occupied");
         }
 
+        /*
+         * Reserve the appropriate freight route before the train
+         * enters the corridor.
+         */
+        reserveFreightRoute(
+                trainName,
+                entryTrackSection,
+                destinationTrackSection
+        );
+
         sections[entryTrackSection] = trainName;
 
         trains.put(
                 trainName,
-                new TrainState(entryTrackSection, destinationTrackSection)
+                new TrainState(
+                        entryTrackSection,
+                        destinationTrackSection
+                )
         );
     }
 
@@ -82,12 +107,97 @@ public class InterlockingImpl implements Interlocking {
                         && destinationTrackSection == 3);
     }
 
+    /**
+     * Returns true when the route is the short freight route
+     * between Sections 3 and 4.
+     */
+    private boolean isWorkshopFreightRoute(int entrySection,
+                                           int destinationSection) {
+
+        return (entrySection == 3 && destinationSection == 4)
+                || (entrySection == 4 && destinationSection == 3);
+    }
+
+    /**
+     * Returns true when the route is the main freight route
+     * through Sections 3, 7 and 11.
+     */
+    private boolean isMainFreightRoute(int entrySection,
+                                       int destinationSection) {
+
+        return (entrySection == 3 && destinationSection == 11)
+                || (entrySection == 11 && destinationSection == 3);
+    }
+
+    /**
+     * Reserves a freight route when a freight train enters.
+     *
+     * Passenger routes do not use these reservation tokens.
+     */
+    private void reserveFreightRoute(String trainName,
+                                     int entrySection,
+                                     int destinationSection) {
+
+        if (isWorkshopFreightRoute(entrySection, destinationSection)) {
+
+            if (workshopRouteOwner != null) {
+                throw new IllegalStateException(
+                        "Workshop freight route is currently reserved");
+            }
+
+            workshopRouteOwner = trainName;
+            return;
+        }
+
+        if (isMainFreightRoute(entrySection, destinationSection)) {
+
+            if (mainFreightRouteOwner != null) {
+                throw new IllegalStateException(
+                        "Main freight route is currently reserved");
+            }
+
+            mainFreightRouteOwner = trainName;
+        }
+    }
+
+    /**
+     * Releases a freight route when its train leaves the corridor.
+     */
+    private void releaseFreightRoute(String trainName,
+                                     TrainState train) {
+
+        if (isWorkshopFreightRoute(
+                train.entrySection,
+                train.destinationSection)) {
+
+            if (trainName.equals(workshopRouteOwner)) {
+                workshopRouteOwner = null;
+            }
+
+            return;
+        }
+
+        if (isMainFreightRoute(
+                train.entrySection,
+                train.destinationSection)) {
+
+            if (trainName.equals(mainFreightRouteOwner)) {
+                mainFreightRouteOwner = null;
+            }
+        }
+    }
+
+    /**
+     * Determines the next section for a train.
+     *
+     * Returns -1 when the train is already at its destination
+     * and should leave the corridor.
+     */
     private int getNextSection(TrainState train) {
 
         int current = train.currentSection;
         int destination = train.destinationSection;
 
-        // A train at its destination exits on its next move.
         if (current == destination) {
             return -1;
         }
@@ -148,19 +258,8 @@ public class InterlockingImpl implements Interlocking {
     }
 
     /**
-     * Returns true when a movement is one of the two passenger
-     * movements through the freight/passenger crossover.
-     */
-    private boolean isPassengerCrossoverMove(int currentSection,
-                                             int nextSection) {
-
-        return (currentSection == 1 && nextSection == 5)
-                || (currentSection == 6 && nextSection == 2);
-    }
-
-    /**
-     * Returns true when a freight train attempts to cross
-     * the passenger tracks.
+     * Freight movements between Sections 3 and 4 cross both
+     * passenger tracks.
      */
     private boolean isFreightCrossoverMove(int currentSection,
                                            int nextSection) {
@@ -177,11 +276,19 @@ public class InterlockingImpl implements Interlocking {
         }
 
         /*
-         * Validate every requested train before moving anything.
-         * This prevents a partially completed move operation if
-         * one of the supplied names is invalid.
+         * Remove duplicate names while maintaining their original
+         * order. A train may move at most once per invocation.
          */
+        Set<String> requestedTrains = new LinkedHashSet<>();
+
         for (String trainName : trainNames) {
+            requestedTrains.add(trainName);
+        }
+
+        /*
+         * Validate all names before making any state changes.
+         */
+        for (String trainName : requestedTrains) {
 
             TrainState train = trains.get(trainName);
 
@@ -192,93 +299,94 @@ public class InterlockingImpl implements Interlocking {
         }
 
         /*
-         * Determine whether a passenger crossover movement is
-         * requested and currently able to move.
-         *
-         * Freight must give way to such a passenger movement.
+         * All movement decisions are based on the railway state
+         * at the beginning of this movement step.
          */
-        boolean passengerHasCrossoverPriority = false;
+        String[] startingSections = sections.clone();
 
-        for (String trainName : trainNames) {
+        Map<String, Integer> approvedMoves = new LinkedHashMap<>();
+        Set<Integer> claimedSections = new LinkedHashSet<>();
+
+        for (String trainName : requestedTrains) {
 
             TrainState train = trains.get(trainName);
 
             int currentSection = train.currentSection;
             int nextSection = getNextSection(train);
 
-            if (nextSection != -1
-                    && isPassengerCrossoverMove(currentSection, nextSection)
-                    && sections[nextSection] == null) {
-
-                passengerHasCrossoverPriority = true;
-                break;
-            }
-        }
-
-        int movedCount = 0;
-
-        /*
-         * Keeps track of destination sections already claimed
-         * during this moveTrains call.
-         */
-        Set<Integer> claimedSections = new HashSet<>();
-
-        for (String trainName : trainNames) {
-
-            TrainState train = trains.get(trainName);
-
-            int currentSection = train.currentSection;
-            int nextSection = getNextSection(train);
-
-            // Train is already at its destination and exits now.
+            /*
+             * A train already at its destination exits now.
+             */
             if (nextSection == -1) {
-                sections[currentSection] = null;
-                train.currentSection = -1;
-                movedCount++;
+                approvedMoves.put(trainName, -1);
                 continue;
             }
 
-            // The next physical section is already occupied.
-            if (sections[nextSection] != null) {
+            /*
+             * The destination section must have been free at the
+             * beginning of this movement step.
+             */
+            if (startingSections[nextSection] != null) {
                 continue;
             }
 
-            // Another train in this same call already claimed it.
+            /*
+             * Two trains cannot claim the same section during the
+             * same movement step.
+             */
             if (claimedSections.contains(nextSection)) {
                 continue;
             }
 
             /*
-             * Passenger trains have priority at the crossover.
-             * A freight crossover movement is blocked whenever
-             * an able passenger crossover movement is requested
-             * in the same call.
+             * Passenger priority at the crossover.
+             *
+             * Freight 3 <-> 4 cannot cross while a passenger
+             * occupies Section 1 or Section 6.
              */
             if (isFreightCrossoverMove(currentSection, nextSection)
-                    && passengerHasCrossoverPriority) {
+                    && (startingSections[1] != null
+                    || startingSections[6] != null)) {
                 continue;
             }
 
-            /*
-             * This also follows the Petri-net priority guard:
-             * freight may not enter the crossover while a
-             * passenger is occupying either approach section.
-             */
-            if (isFreightCrossoverMove(currentSection, nextSection)
-                    && (sections[1] != null || sections[6] != null)) {
-                continue;
-            }
-
-            // Perform the movement.
-            sections[currentSection] = null;
-            sections[nextSection] = trainName;
-            train.currentSection = nextSection;
-
+            approvedMoves.put(trainName, nextSection);
             claimedSections.add(nextSection);
-            movedCount++;
         }
 
-        return movedCount;
+        /*
+         * Apply every approved movement after all movement
+         * decisions have been made.
+         */
+        for (Map.Entry<String, Integer> move
+                : approvedMoves.entrySet()) {
+
+            String trainName = move.getKey();
+            int nextSection = move.getValue();
+
+            TrainState train = trains.get(trainName);
+            int currentSection = train.currentSection;
+
+            sections[currentSection] = null;
+
+            if (nextSection == -1) {
+
+                /*
+                 * The train is leaving the corridor, so its freight
+                 * route reservation can now be released.
+                 */
+                releaseFreightRoute(trainName, train);
+
+                train.currentSection = -1;
+
+            } else {
+
+                sections[nextSection] = trainName;
+                train.currentSection = nextSection;
+            }
+        }
+
+        return approvedMoves.size();
     }
 
     @Override

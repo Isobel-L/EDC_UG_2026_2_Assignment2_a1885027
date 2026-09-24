@@ -31,18 +31,28 @@
 - Exported and reviewed the completed Petri-net model as a PDF for submission
 
 ## 23 September 2026
-- Began implementing InterlockingImpl in Java.
-- Added data structures for train state and track-section occupancy.
-- Implemented getSection() and getTrain().
-- Implemented addTrain() with route validation, duplicate train checks and occupied entry-section checks.
+- Began implementing InterlockingImpl in Java
+- Added data structures for train state and track-section occupancy
+- Implemented getSection() and getTrain()
+- Implemented addTrain() with route validation, duplicate train checks and occupied entry-section checks
 
 ## 24 September 2026
-- Implemented route mapping for all valid passenger and freight paths.
-- Implemented basic moveTrains() behaviour for one-section movement and exiting the corridor.
-- Added JUnit 4 tests for train creation, section lookup, route validation, movement and exiting.
-- Ran the initial test suite successfully with all 10 tests passing.
+- Implemented route mapping for all valid passenger and freight paths
+- Implemented basic moveTrains() behaviour for one-section movement and exiting the corridor
+- Added JUnit 4 tests for train creation, section lookup, route validation, movement and exiting
+- Ran the initial test suite successfully with all 10 tests passing
 
 ## 24 September 2026
 - Implemented freight/passenger crossover conflict handling.
-- Implemented passenger priority at the crossover independently of moveTrains() argument order.
-- Added crossover-specific JUnit tests including both passenger directions and freight blocking behaviour.
+- Implemented passenger priority at the crossover independently of moveTrains() argument order
+- Added crossover-specific JUnit tests including both passenger directions and freight blocking behaviour
+
+## 24 September 2026
+- Improved moveTrains() so movement decisions use the railway state at the start of each movement step
+- Prevented duplicate train names from causing the same train to move more than once in a single call
+- Added protection against multiple trains claiming the same destination section
+- Implemented freight route reservations based on the Petri-net model
+- Added separate reservations for the Workshop Route (Sections 3-4) and Main Freight Route (Sections 3-7-11)
+- Freight route reservations are held from train entry until the train exits the corridor
+- Added tests for opposing freight movements, reservation release, simultaneous passenger conflicts and invalid train movement
+- Ran the expanded JUnit test suite successfully with all 23 tests passing
