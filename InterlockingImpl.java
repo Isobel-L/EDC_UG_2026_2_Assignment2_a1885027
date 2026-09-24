@@ -1,5 +1,7 @@
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.Map;
+import java.util.Set;
 
 public class InterlockingImpl implements Interlocking {
 
@@ -7,7 +9,7 @@ public class InterlockingImpl implements Interlocking {
     // null means the section is currently unoccupied.
     private final String[] sections = new String[12];
 
-    // Stores trains that have been added to the system.
+    // Stores every train that has been added.
     private final Map<String, TrainState> trains = new HashMap<>();
 
     private static class TrainState {
@@ -85,7 +87,7 @@ public class InterlockingImpl implements Interlocking {
         int current = train.currentSection;
         int destination = train.destinationSection;
 
-        // Train exits on the move after reaching its destination.
+        // A train at its destination exits on its next move.
         if (current == destination) {
             return -1;
         }
@@ -95,14 +97,12 @@ public class InterlockingImpl implements Interlocking {
             return 5;
         }
 
-        if (current == 5) {
-            if (destination == 8) {
-                return 8;
-            }
+        if (current == 5 && destination == 8) {
+            return 8;
+        }
 
-            if (destination == 9) {
-                return 9;
-            }
+        if (current == 5 && destination == 9) {
+            return 9;
         }
 
         // Passenger northbound
@@ -147,6 +147,28 @@ public class InterlockingImpl implements Interlocking {
         throw new IllegalStateException("Train is on an invalid route");
     }
 
+    /**
+     * Returns true when a movement is one of the two passenger
+     * movements through the freight/passenger crossover.
+     */
+    private boolean isPassengerCrossoverMove(int currentSection,
+                                             int nextSection) {
+
+        return (currentSection == 1 && nextSection == 5)
+                || (currentSection == 6 && nextSection == 2);
+    }
+
+    /**
+     * Returns true when a freight train attempts to cross
+     * the passenger tracks.
+     */
+    private boolean isFreightCrossoverMove(int currentSection,
+                                           int nextSection) {
+
+        return (currentSection == 3 && nextSection == 4)
+                || (currentSection == 4 && nextSection == 3);
+    }
+
     @Override
     public int moveTrains(String[] trainNames) {
 
@@ -154,8 +176,11 @@ public class InterlockingImpl implements Interlocking {
             throw new IllegalArgumentException("Train list cannot be null");
         }
 
-        int movedCount = 0;
-
+        /*
+         * Validate every requested train before moving anything.
+         * This prevents a partially completed move operation if
+         * one of the supplied names is invalid.
+         */
         for (String trainName : trainNames) {
 
             TrainState train = trains.get(trainName);
@@ -164,11 +189,48 @@ public class InterlockingImpl implements Interlocking {
                 throw new IllegalArgumentException(
                         "Train does not exist or has already exited");
             }
+        }
+
+        /*
+         * Determine whether a passenger crossover movement is
+         * requested and currently able to move.
+         *
+         * Freight must give way to such a passenger movement.
+         */
+        boolean passengerHasCrossoverPriority = false;
+
+        for (String trainName : trainNames) {
+
+            TrainState train = trains.get(trainName);
 
             int currentSection = train.currentSection;
             int nextSection = getNextSection(train);
 
-            // If already at destination, this move exits the corridor.
+            if (nextSection != -1
+                    && isPassengerCrossoverMove(currentSection, nextSection)
+                    && sections[nextSection] == null) {
+
+                passengerHasCrossoverPriority = true;
+                break;
+            }
+        }
+
+        int movedCount = 0;
+
+        /*
+         * Keeps track of destination sections already claimed
+         * during this moveTrains call.
+         */
+        Set<Integer> claimedSections = new HashSet<>();
+
+        for (String trainName : trainNames) {
+
+            TrainState train = trains.get(trainName);
+
+            int currentSection = train.currentSection;
+            int nextSection = getNextSection(train);
+
+            // Train is already at its destination and exits now.
             if (nextSection == -1) {
                 sections[currentSection] = null;
                 train.currentSection = -1;
@@ -176,16 +238,43 @@ public class InterlockingImpl implements Interlocking {
                 continue;
             }
 
-            // Destination section is occupied, so the train cannot move.
+            // The next physical section is already occupied.
             if (sections[nextSection] != null) {
                 continue;
             }
 
-            // Move the train to the next section.
+            // Another train in this same call already claimed it.
+            if (claimedSections.contains(nextSection)) {
+                continue;
+            }
+
+            /*
+             * Passenger trains have priority at the crossover.
+             * A freight crossover movement is blocked whenever
+             * an able passenger crossover movement is requested
+             * in the same call.
+             */
+            if (isFreightCrossoverMove(currentSection, nextSection)
+                    && passengerHasCrossoverPriority) {
+                continue;
+            }
+
+            /*
+             * This also follows the Petri-net priority guard:
+             * freight may not enter the crossover while a
+             * passenger is occupying either approach section.
+             */
+            if (isFreightCrossoverMove(currentSection, nextSection)
+                    && (sections[1] != null || sections[6] != null)) {
+                continue;
+            }
+
+            // Perform the movement.
             sections[currentSection] = null;
             sections[nextSection] = trainName;
             train.currentSection = nextSection;
 
+            claimedSections.add(nextSection);
             movedCount++;
         }
 
@@ -194,6 +283,7 @@ public class InterlockingImpl implements Interlocking {
 
     @Override
     public String getSection(int trackSection) {
+
         if (trackSection < 1 || trackSection > 11) {
             throw new IllegalArgumentException("Invalid track section");
         }
@@ -203,6 +293,7 @@ public class InterlockingImpl implements Interlocking {
 
     @Override
     public int getTrain(String trainName) {
+
         TrainState train = trains.get(trainName);
 
         if (train == null) {

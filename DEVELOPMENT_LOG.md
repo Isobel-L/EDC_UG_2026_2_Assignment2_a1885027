@@ -41,3 +41,8 @@
 - Implemented basic moveTrains() behaviour for one-section movement and exiting the corridor.
 - Added JUnit 4 tests for train creation, section lookup, route validation, movement and exiting.
 - Ran the initial test suite successfully with all 10 tests passing.
+
+## 24 September 2026
+- Implemented freight/passenger crossover conflict handling.
+- Implemented passenger priority at the crossover independently of moveTrains() argument order.
+- Added crossover-specific JUnit tests including both passenger directions and freight blocking behaviour.
