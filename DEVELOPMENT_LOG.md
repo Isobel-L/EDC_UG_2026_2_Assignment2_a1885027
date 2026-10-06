@@ -56,3 +56,14 @@
 - Freight route reservations are held from train entry until the train exits the corridor
 - Added tests for opposing freight movements, reservation release, simultaneous passenger conflicts and invalid train movement
 - Ran the expanded JUnit test suite successfully with all 23 tests passing
+
+## 6 October 2026
+- Expanded the JUnit test suite to cover edge cases and hidden-test-style scenarios
+- Added validation tests for invalid track section numbers, invalid routes and null inputs
+- Tested all valid passenger and freight routes from entry through to exit
+- Added tests for duplicate movement requests, simultaneous train movements and movement into occupied sections
+- Tested passenger priority and crossover behaviour in both directions
+- Added tests for freight route reservation release and state cleanup after failed entry attempts
+- Tested train-name reuse after exit and freight reservation cleanup
+- Verified that an exiting train does not make its section available to another train during the same movement step
+- Ran the complete JUnit suite successfully with all 51 tests passing
