@@ -67,3 +67,12 @@
 - Tested train-name reuse after exit and freight reservation cleanup
 - Verified that an exiting train does not make its section available to another train during the same movement step
 - Ran the complete JUnit suite successfully with all 51 tests passing
+
+## 6 October 2026
+- Reviewed the initial Gradescope results, which showed that 66 of 175 automated tests were passing despite all local tests succeeding
+- Analysed the failed transition cases and identified that the freight route reservation logic was too restrictive because it allowed only one train to reserve a route at a time
+- Refined the freight reservation model so multiple trains travelling in the same direction can use the same freight route while still preventing opposing traffic from entering and causing deadlock
+- Updated the Workshop Route and Main Freight Route reservation logic to track the active travel direction and the number of trains using each route
+- Preserved passenger priority, section occupancy protection, simultaneous-movement rules and route separation while making better use of available track capacity
+- Re-ran the complete local JUnit test suite after the changes and confirmed that all 51 tests still passed successfully
+- Prepared the revised implementation for another Gradescope submission to evaluate the remaining hidden transition cases

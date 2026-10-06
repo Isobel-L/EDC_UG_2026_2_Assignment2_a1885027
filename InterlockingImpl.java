@@ -6,192 +6,247 @@ import java.util.Set;
 
 public class InterlockingImpl implements Interlocking {
 
-    // Indexes 1-11 represent physical track sections.
-    // null means the section is currently unoccupied.
+    // Sections 1-11. null means the section is free.
     private final String[] sections = new String[12];
 
-    // Stores every train that has been added.
+    // All train names that have been used.
     private final Map<String, TrainState> trains = new HashMap<>();
 
     /*
-     * These represent the two freight-route reservation tokens
-     * from the Petri-net model.
+     * Directional freight-route reservations.
      *
-     * null means that the route is currently available.
+     *  1  = southbound
+     * -1  = northbound
+     *  0  = unused
+     *
+     * Multiple trains travelling in the SAME direction are allowed.
+     * An opposing train is rejected until all trains travelling in the
+     * current direction have left that route.
      */
-    private String workshopRouteOwner = null;
-    private String mainFreightRouteOwner = null;
+    private int workshopDirection = 0;
+    private int workshopTrainCount = 0;
+
+    private int mainDirection = 0;
+    private int mainTrainCount = 0;
+
 
     private static class TrainState {
+
         private final int entrySection;
-        private int currentSection;
         private final int destinationSection;
+        private int currentSection;
 
         TrainState(int entrySection, int destinationSection) {
             this.entrySection = entrySection;
-            this.currentSection = entrySection;
             this.destinationSection = destinationSection;
+            this.currentSection = entrySection;
         }
     }
 
+
     @Override
-    public void addTrain(String trainName, int entryTrackSection,
+    public void addTrain(String trainName,
+                         int entryTrackSection,
                          int destinationTrackSection) {
 
         if (trainName == null) {
-            throw new IllegalArgumentException("Train name cannot be null");
+            throw new IllegalArgumentException(
+                    "Train name cannot be null");
         }
 
-        TrainState existingTrain = trains.get(trainName);
+        // Validate the route before indexing the sections array.
+        if (!isValidRoute(entryTrackSection,
+                          destinationTrackSection)) {
 
-        if (existingTrain != null && existingTrain.currentSection != -1) {
-            throw new IllegalArgumentException("Train name is already in use");
-        }
-
-        if (!isValidRoute(entryTrackSection, destinationTrackSection)) {
             throw new IllegalArgumentException(
                     "No valid path exists between entry and destination");
         }
 
+        TrainState existing = trains.get(trainName);
+
+        if (existing != null && existing.currentSection != -1) {
+            throw new IllegalArgumentException(
+                    "Train name is already in use");
+        }
+
         if (sections[entryTrackSection] != null) {
-            throw new IllegalStateException("Entry track section is occupied");
+            throw new IllegalStateException(
+                    "Entry track section is occupied");
         }
 
         /*
-         * Reserve the appropriate freight route before the train
-         * enters the corridor.
+         * Check the freight direction BEFORE modifying any state.
          */
-        reserveFreightRoute(
-                trainName,
+        checkFreightReservation(
                 entryTrackSection,
-                destinationTrackSection
-        );
+                destinationTrackSection);
+
+        TrainState train =
+                new TrainState(entryTrackSection,
+                               destinationTrackSection);
 
         sections[entryTrackSection] = trainName;
+        trains.put(trainName, train);
 
-        trains.put(
-                trainName,
-                new TrainState(
-                        entryTrackSection,
-                        destinationTrackSection
-                )
-        );
+        /*
+         * Only reserve after the train has successfully been added.
+         */
+        reserveFreightRoute(
+                entryTrackSection,
+                destinationTrackSection);
     }
 
-    private boolean isValidRoute(int entryTrackSection,
-                                 int destinationTrackSection) {
 
-        return
-                // Passenger southbound
-                (entryTrackSection == 1
-                        && (destinationTrackSection == 8
-                        || destinationTrackSection == 9))
-
-                // Passenger northbound
-                || (entryTrackSection == 9
-                        && destinationTrackSection == 2)
-
-                || (entryTrackSection == 10
-                        && destinationTrackSection == 2)
-
-                // Freight southbound
-                || (entryTrackSection == 3
-                        && (destinationTrackSection == 4
-                        || destinationTrackSection == 11))
-
-                // Freight northbound
-                || (entryTrackSection == 4
-                        && destinationTrackSection == 3)
-
-                || (entryTrackSection == 11
-                        && destinationTrackSection == 3);
-    }
-
-    /**
-     * Returns true when the route is the short freight route
-     * between Sections 3 and 4.
+    /*
+     * Legal complete routes through the corridor.
      */
-    private boolean isWorkshopFreightRoute(int entrySection,
-                                           int destinationSection) {
+    private boolean isValidRoute(int entry, int destination) {
 
-        return (entrySection == 3 && destinationSection == 4)
-                || (entrySection == 4 && destinationSection == 3);
-    }
-
-    /**
-     * Returns true when the route is the main freight route
-     * through Sections 3, 7 and 11.
-     */
-    private boolean isMainFreightRoute(int entrySection,
-                                       int destinationSection) {
-
-        return (entrySection == 3 && destinationSection == 11)
-                || (entrySection == 11 && destinationSection == 3);
-    }
-
-    /**
-     * Reserves a freight route when a freight train enters.
-     *
-     * Passenger routes do not use these reservation tokens.
-     */
-    private void reserveFreightRoute(String trainName,
-                                     int entrySection,
-                                     int destinationSection) {
-
-        if (isWorkshopFreightRoute(entrySection, destinationSection)) {
-
-            if (workshopRouteOwner != null) {
-                throw new IllegalStateException(
-                        "Workshop freight route is currently reserved");
-            }
-
-            workshopRouteOwner = trainName;
-            return;
+        // Passenger southbound.
+        if (entry == 1) {
+            return destination == 8 || destination == 9;
         }
 
-        if (isMainFreightRoute(entrySection, destinationSection)) {
+        // Passenger northbound.
+        if (entry == 9 || entry == 10) {
+            return destination == 2;
+        }
 
-            if (mainFreightRouteOwner != null) {
+        // Freight southbound.
+        if (entry == 3) {
+            return destination == 4 || destination == 11;
+        }
+
+        // Freight northbound.
+        if (entry == 4 || entry == 11) {
+            return destination == 3;
+        }
+
+        return false;
+    }
+
+
+    private boolean isWorkshopRoute(int entry, int destination) {
+
+        return (entry == 3 && destination == 4)
+                || (entry == 4 && destination == 3);
+    }
+
+
+    private boolean isMainRoute(int entry, int destination) {
+
+        return (entry == 3 && destination == 11)
+                || (entry == 11 && destination == 3);
+    }
+
+
+    /*
+     * Southbound freight = +1
+     * Northbound freight = -1
+     */
+    private int freightDirection(int entry, int destination) {
+
+        if (entry == 3 &&
+                (destination == 4 || destination == 11)) {
+            return 1;
+        }
+
+        if ((entry == 4 || entry == 11)
+                && destination == 3) {
+            return -1;
+        }
+
+        return 0;
+    }
+
+
+    /*
+     * Make sure an opposing freight train has not already reserved
+     * the route.
+     */
+    private void checkFreightReservation(int entry,
+                                         int destination) {
+
+        int direction = freightDirection(entry, destination);
+
+        if (isWorkshopRoute(entry, destination)) {
+
+            if (workshopTrainCount > 0
+                    && workshopDirection != direction) {
+
                 throw new IllegalStateException(
-                        "Main freight route is currently reserved");
+                        "Workshop route occupied by opposing traffic");
             }
+        }
 
-            mainFreightRouteOwner = trainName;
+        if (isMainRoute(entry, destination)) {
+
+            if (mainTrainCount > 0
+                    && mainDirection != direction) {
+
+                throw new IllegalStateException(
+                        "Main freight route occupied by opposing traffic");
+            }
         }
     }
 
-    /**
-     * Releases a freight route when its train leaves the corridor.
-     */
-    private void releaseFreightRoute(String trainName,
-                                     TrainState train) {
 
-        if (isWorkshopFreightRoute(
+    private void reserveFreightRoute(int entry,
+                                     int destination) {
+
+        int direction = freightDirection(entry, destination);
+
+        if (isWorkshopRoute(entry, destination)) {
+
+            if (workshopTrainCount == 0) {
+                workshopDirection = direction;
+            }
+
+            workshopTrainCount++;
+        }
+
+        if (isMainRoute(entry, destination)) {
+
+            if (mainTrainCount == 0) {
+                mainDirection = direction;
+            }
+
+            mainTrainCount++;
+        }
+    }
+
+
+    private void releaseFreightRoute(TrainState train) {
+
+        if (isWorkshopRoute(
                 train.entrySection,
                 train.destinationSection)) {
 
-            if (trainName.equals(workshopRouteOwner)) {
-                workshopRouteOwner = null;
-            }
+            workshopTrainCount--;
 
-            return;
+            if (workshopTrainCount == 0) {
+                workshopDirection = 0;
+            }
         }
 
-        if (isMainFreightRoute(
+        if (isMainRoute(
                 train.entrySection,
                 train.destinationSection)) {
 
-            if (trainName.equals(mainFreightRouteOwner)) {
-                mainFreightRouteOwner = null;
+            mainTrainCount--;
+
+            if (mainTrainCount == 0) {
+                mainDirection = 0;
             }
         }
     }
 
-    /**
-     * Determines the next section for a train.
+
+    /*
+     * Determine the next physical track section.
      *
-     * Returns -1 when the train is already at its destination
-     * and should leave the corridor.
+     * -1 means the train is already at its destination and
+     * should now leave the corridor.
      */
     private int getNextSection(TrainState train) {
 
@@ -202,210 +257,288 @@ public class InterlockingImpl implements Interlocking {
             return -1;
         }
 
-        // Passenger southbound
+        // -------------------------------------------------
+        // PASSENGER SOUTHBOUND
+        // -------------------------------------------------
+
+        // 1 -> 5
         if (current == 1) {
             return 5;
         }
 
+        // 5 -> 8
         if (current == 5 && destination == 8) {
             return 8;
         }
 
+        // 5 -> 9
         if (current == 5 && destination == 9) {
             return 9;
         }
 
-        // Passenger northbound
+        // PASSENGER NORTHBOUND
+
+        // 9 -> 6
         if (current == 9 && destination == 2) {
             return 6;
         }
 
+        // 10 -> 6
         if (current == 10 && destination == 2) {
             return 6;
         }
 
+        // 6 -> 2
         if (current == 6 && destination == 2) {
             return 2;
         }
 
-        // Freight southbound
+        // FREIGHT SOUTHBOUND
+
+        // 3 -> 4
         if (current == 3 && destination == 4) {
             return 4;
         }
 
+        // 3 -> 7
         if (current == 3 && destination == 11) {
             return 7;
         }
 
+        // 7 -> 11
         if (current == 7 && destination == 11) {
             return 11;
         }
 
-        // Freight northbound
+        // FREIGHT NORTHBOUND
+        
+        // 4 -> 3
         if (current == 4 && destination == 3) {
             return 3;
         }
 
+        // 11 -> 7
         if (current == 11 && destination == 3) {
             return 7;
         }
 
+        // 7 -> 3
         if (current == 7 && destination == 3) {
             return 3;
         }
 
-        throw new IllegalStateException("Train is on an invalid route");
+        throw new IllegalStateException(
+                "Train is on an invalid route");
     }
 
-    /**
-     * Freight movements between Sections 3 and 4 cross both
-     * passenger tracks.
+
+    /*
+     * Freight 3 <-> 4 crosses both passenger tracks.
      */
-    private boolean isFreightCrossoverMove(int currentSection,
-                                           int nextSection) {
+    private boolean isFreightCrossoverMove(int current,
+                                            int next) {
 
-        return (currentSection == 3 && nextSection == 4)
-                || (currentSection == 4 && nextSection == 3);
+        return (current == 3 && next == 4)
+                || (current == 4 && next == 3);
     }
+
 
     @Override
     public int moveTrains(String[] trainNames) {
 
         if (trainNames == null) {
-            throw new IllegalArgumentException("Train list cannot be null");
+            throw new IllegalArgumentException(
+                    "Train list cannot be null");
         }
 
         /*
-         * Remove duplicate names while maintaining their original
-         * order. A train may move at most once per invocation.
+         * Remove duplicate names while preserving order.
+         * This prevents a train moving twice during one call.
          */
-        Set<String> requestedTrains = new LinkedHashSet<>();
+        Set<String> requested = new LinkedHashSet<>();
 
         for (String trainName : trainNames) {
-            requestedTrains.add(trainName);
+
+            if (trainName == null) {
+                throw new IllegalArgumentException(
+                        "Train name cannot be null");
+            }
+
+            requested.add(trainName);
         }
 
+
         /*
-         * Validate all names before making any state changes.
+         * Validate EVERY train before changing anything.
+         *
+         * This makes moveTrains atomic with respect to invalid input.
          */
-        for (String trainName : requestedTrains) {
+        for (String trainName : requested) {
 
             TrainState train = trains.get(trainName);
 
             if (train == null || train.currentSection == -1) {
+
                 throw new IllegalArgumentException(
-                        "Train does not exist or has already exited");
+                        "Train does not exist or has exited");
             }
         }
 
+
         /*
-         * All movement decisions are based on the railway state
-         * at the beginning of this movement step.
+         * Movement decisions use the railway state at the beginning
+         * of this call.
+         *
+         * Therefore, if a train leaves a section during this call,
+         * another train cannot immediately move into that section
+         * during the same call.
          */
-        String[] startingSections = sections.clone();
+        String[] initialSections = sections.clone();
 
-        Map<String, Integer> approvedMoves = new LinkedHashMap<>();
-        Set<Integer> claimedSections = new LinkedHashSet<>();
+        Map<String, Integer> approved =
+                new LinkedHashMap<>();
 
-        for (String trainName : requestedTrains) {
+        Set<Integer> claimedDestinations =
+                new LinkedHashSet<>();
+
+
+        /*
+         * Passenger priority must not depend on the order in which
+         * names were supplied.
+         *
+         * We therefore determine whether the passenger crossover
+         * approaches were occupied at the start of the step.
+         */
+        boolean passengerAtUpperCrossing =
+                initialSections[1] != null;
+
+        boolean passengerAtLowerCrossing =
+                initialSections[6] != null;
+
+
+        for (String trainName : requested) {
 
             TrainState train = trains.get(trainName);
 
-            int currentSection = train.currentSection;
-            int nextSection = getNextSection(train);
+            int current = train.currentSection;
+            int next = getNextSection(train);
+
 
             /*
-             * A train already at its destination exits now.
+             * Train is already at destination:
+             * its next movement exits the railway.
              */
-            if (nextSection == -1) {
-                approvedMoves.put(trainName, -1);
+            if (next == -1) {
+
+                approved.put(trainName, -1);
                 continue;
             }
 
+
             /*
-             * The destination section must have been free at the
-             * beginning of this movement step.
+             * The next section was occupied at the beginning
+             * of the movement step.
              */
-            if (startingSections[nextSection] != null) {
+            if (initialSections[next] != null) {
                 continue;
             }
 
+
             /*
-             * Two trains cannot claim the same section during the
-             * same movement step.
+             * Another train has already been approved to enter
+             * this section during this movement step.
              */
-            if (claimedSections.contains(nextSection)) {
+            if (claimedDestinations.contains(next)) {
                 continue;
             }
 
+
             /*
-             * Passenger priority at the crossover.
+             * Freight movement 3 <-> 4 crosses BOTH passenger
+             * tracks.
              *
-             * Freight 3 <-> 4 cannot cross while a passenger
-             * occupies Section 1 or Section 6.
+             * Passenger trains have priority, so freight cannot
+             * cross while a passenger occupies Section 1 or 6.
              */
-            if (isFreightCrossoverMove(currentSection, nextSection)
-                    && (startingSections[1] != null
-                    || startingSections[6] != null)) {
-                continue;
+            if (isFreightCrossoverMove(current, next)) {
+
+                if (passengerAtUpperCrossing
+                        || passengerAtLowerCrossing) {
+
+                    continue;
+                }
             }
 
-            approvedMoves.put(trainName, nextSection);
-            claimedSections.add(nextSection);
+
+            approved.put(trainName, next);
+            claimedDestinations.add(next);
         }
 
-        /*
-         * Apply every approved movement after all movement
-         * decisions have been made.
-         */
-        for (Map.Entry<String, Integer> move
-                : approvedMoves.entrySet()) {
 
-            String trainName = move.getKey();
-            int nextSection = move.getValue();
+        /*
+         * Apply all approved movements only after all decisions
+         * have been made.
+         */
+        for (Map.Entry<String, Integer> movement
+                : approved.entrySet()) {
+
+            String trainName = movement.getKey();
+            int next = movement.getValue();
 
             TrainState train = trains.get(trainName);
-            int currentSection = train.currentSection;
+            int current = train.currentSection;
 
-            sections[currentSection] = null;
+            // Release the current physical section.
+            sections[current] = null;
 
-            if (nextSection == -1) {
+            if (next == -1) {
 
-                /*
-                 * The train is leaving the corridor, so its freight
-                 * route reservation can now be released.
-                 */
-                releaseFreightRoute(trainName, train);
+                // Train leaves the railway.
+                releaseFreightRoute(train);
 
                 train.currentSection = -1;
 
             } else {
 
-                sections[nextSection] = trainName;
-                train.currentSection = nextSection;
+                // Train enters its next section.
+                sections[next] = trainName;
+                train.currentSection = next;
             }
         }
 
-        return approvedMoves.size();
+
+        return approved.size();
     }
+
 
     @Override
     public String getSection(int trackSection) {
 
         if (trackSection < 1 || trackSection > 11) {
-            throw new IllegalArgumentException("Invalid track section");
+
+            throw new IllegalArgumentException(
+                    "Invalid track section");
         }
 
         return sections[trackSection];
     }
 
+
     @Override
     public int getTrain(String trainName) {
+
+        if (trainName == null) {
+
+            throw new IllegalArgumentException(
+                    "Train name cannot be null");
+        }
 
         TrainState train = trains.get(trainName);
 
         if (train == null) {
-            throw new IllegalArgumentException("Train does not exist");
+
+            throw new IllegalArgumentException(
+                    "Train does not exist");
         }
 
         return train.currentSection;
