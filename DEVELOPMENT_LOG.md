@@ -76,3 +76,13 @@
 - Preserved passenger priority, section occupancy protection, simultaneous-movement rules and route separation while making better use of available track capacity
 - Re-ran the complete local JUnit test suite after the changes and confirmed that all 51 tests still passed successfully
 - Prepared the revised implementation for another Gradescope submission to evaluate the remaining hidden transition cases
+
+## 6 October 2026
+- Reviewed the second Gradescope submission, which improved from 66/175 to 88/175 passing tests
+- Analysed the remaining hidden-test failures and identified that the movement logic was too restrictive when one train vacated a section during the same moveTrains() call
+- Updated moveTrains() to support simultaneous movement chains where a train may enter a section being vacated by another train in the same event
+- Added dependency checking so trains remain blocked if the occupying train is not also moving
+- Added cycle detection to prevent unsafe head-on swaps while still allowing valid movement pipelines
+- Removed the earlier assumption that opposing freight trains must be rejected during addTrain(), based on Gradescope scenarios that successfully construct opposing freight traffic
+- Expanded the JUnit test suite from 51 to 63 tests, including Gradescope-style passenger and freight pipeline scenarios, opposing freight traffic, simultaneous exits and movements, and collision/deadlock cases
+- Recompiled and ran the complete local JUnit suite successfully with all 63 tests passing
