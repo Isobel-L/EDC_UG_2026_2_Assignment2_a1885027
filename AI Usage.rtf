@@ -1,0 +1,40 @@
+AI Tool / Version
+ChatGPT – OpenAI, GPT-5.6 Sol
+
+How AI Was Used:
+
+I used ChatGPT during the assignment as a discussion, review, debugging and testing assistant.
+
+For the Petri-net planning, I used AI to discuss how the track sections could be represented using Free and Occupied places, 
+how train movements could be represented as transitions, and where collision or deadlock risks existed. 
+This included discussion of the passenger/freight crossover, passenger priority, and the bidirectional freight routes. 
+
+AI also helped me evaluate the idea of using separate reservation resources for the Workshop Route (Sections 3–4) and the 
+Main Freight Route (Sections 3–7–11). For InterlockingImpl.java, AI was used to discuss and review specific implementation sections. 
+In addTrain(), this included duplicate train names and occupied entry sections. 
+In isValidRoute(), AI helped check the permitted entry/destination combinations against the railway layout.
+The largest amount of discussion concerned moveTrains(), including how to prevent two trains entering the same section, validate 
+requested train names before making state changes, stop the same train moving twice in one call and preserve passenger priority at the crossover.
+
+For testing, AI suggested additional JUnit scenarios that I then ran against the implementation. These included duplicate names,
+null and unknown train inputs, multiple trains competing for the same section and cleanup after failed operations. 
+The test suite was expanded incrementally to 51 tests.
+
+For debugging, I used ChatGPT to examine specific lines of my Java implementation and explain why certain behaviours were occurring. For example, AI helped me review:
+Set<String> requestedTrains = new LinkedHashSet<>(); and requestedTrains.add(trainName);
+when ensuring the same train could not move twice if its name appeared multiple times in moveTrains().
+It also helped me verify the validation condition
+if (train == null || train.currentSection == -1)
+so invalid or already-exited trains were detected before any state changes occurred.
+
+UPDATE: I later used ChatGPT to help debug the implementation using Gradescope feedback. This included identifying issues with freight route handling, 
+simultaneous section-vacating movements, movement dependencies, and conflicts where multiple trains attempted to enter the same section. 
+I then updated the implementation and expanded my JUnit suite with regression tests based on the failing scenarios, 
+increasing the hidden test result from 66/175 to 164/175 and finally to 175/175
+
+Verification and Review:
+I reviewed the implementation independently against the supplied Interlocking interface, the assignment railway requirements 
+and my Petri-net model throughout development. Changes were compiled and tested locally before being retained.
+For final verification I used JDK 11.0.32 and successfully compiled the implementation using: javac InterlockingImpl.java
+I also ran the JUnit 4 test suite with all 66 tests passing, checked that no .class files were tracked in Git, 
+and confirmed that the repository compiled successfully using the Java version specified by the assignment.
