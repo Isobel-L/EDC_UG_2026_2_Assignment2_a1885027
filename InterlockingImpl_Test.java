@@ -20,7 +20,9 @@ public class InterlockingImpl_Test {
         interlocking = new InterlockingImpl();
     }
 
+    // =========================================================
     // BASIC STATE / LOOKUP TESTS
+    // =========================================================
 
     @Test
     public void testAllSectionsInitiallyEmpty() {
@@ -67,7 +69,9 @@ public class InterlockingImpl_Test {
         interlocking.getTrain(null);
     }
 
+    // =========================================================
     // ADD / ROUTE VALIDATION TESTS
+    // =========================================================
 
     @Test(expected = IllegalArgumentException.class)
     public void testNullTrainNameCannotBeAdded() {
@@ -121,7 +125,9 @@ public class InterlockingImpl_Test {
         interlocking.addTrain("TrainA", 1, 12);
     }
 
+    // =========================================================
     // VALID ENTRY / DESTINATION PAIRS
+    // =========================================================
 
     @Test
     public void testAllValidRoutesCanBeAddedIndividually() {
@@ -160,7 +166,9 @@ public class InterlockingImpl_Test {
         assertEquals(11, x.getTrain("A"));
     }
 
+    // =========================================================
     // BASIC MOVEMENT / EXIT TESTS
+    // =========================================================
 
     @Test
     public void testPassengerOneToEightComplete() {
@@ -292,7 +300,9 @@ public class InterlockingImpl_Test {
         assertEquals(10, interlocking.getTrain("Reusable"));
     }
 
+    // =========================================================
     // moveTrains INPUT VALIDATION
+    // =========================================================
 
     @Test
     public void testEmptyMoveArrayMovesNothing() {
@@ -346,37 +356,41 @@ public class InterlockingImpl_Test {
         assertEquals(5, interlocking.getTrain("A"));
     }
 
+    // =========================================================
     // PASSENGER JUNCTION / DESTINATION CONFLICT TESTS
+    // =========================================================
 
     @Test
-    public void testNineAndTenCannotBothEnterSix() {
+    public void testNineAndTenBothBlockedWhenCompetingForSix() {
         interlocking.addTrain("From9", 9, 2);
         interlocking.addTrain("From10", 10, 2);
 
-        assertEquals(
-                1,
-                interlocking.moveTrains(
-                        new String[]{"From9", "From10"}));
+        int moved = interlocking.moveTrains(
+                new String[]{"From9", "From10"});
 
-        assertEquals(6, interlocking.getTrain("From9"));
-        assertEquals(10, interlocking.getTrain("From10"));
-    }
-
-    @Test
-    public void testTenWinsWhenListedFirstForSectionSix() {
-        interlocking.addTrain("From9", 9, 2);
-        interlocking.addTrain("From10", 10, 2);
-
-        assertEquals(
-                1,
-                interlocking.moveTrains(
-                        new String[]{"From10", "From9"}));
-
-        assertEquals(6, interlocking.getTrain("From10"));
+        assertEquals(0, moved);
         assertEquals(9, interlocking.getTrain("From9"));
+        assertEquals(10, interlocking.getTrain("From10"));
+        assertNull(interlocking.getSection(6));
     }
 
+    @Test
+    public void testConflictForSixIndependentOfArgumentOrder() {
+        interlocking.addTrain("From9", 9, 2);
+        interlocking.addTrain("From10", 10, 2);
+
+        int moved = interlocking.moveTrains(
+                new String[]{"From10", "From9"});
+
+        assertEquals(0, moved);
+        assertEquals(9, interlocking.getTrain("From9"));
+        assertEquals(10, interlocking.getTrain("From10"));
+        assertNull(interlocking.getSection(6));
+    }
+
+    // =========================================================
     // PASSENGER PRIORITY AT FREIGHT CROSSOVER
+    // =========================================================
 
     @Test
     public void testSouthPassengerPriorityOverFreight() {
@@ -467,7 +481,9 @@ public class InterlockingImpl_Test {
         assertEquals(2, interlocking.getTrain("North"));
     }
 
+    // =========================================================
     // GRADESCOPE-ALIGNED SIMULTANEOUS MOVEMENT TESTS
+    // =========================================================
 
     /**
      * Observed Gradescope pattern:
@@ -589,7 +605,9 @@ public class InterlockingImpl_Test {
         assertEquals(5, interlocking.getTrain("At1"));
     }
 
+    // =========================================================
     // FREIGHT SIMULTANEOUS MOVEMENT TESTS
+    // =========================================================
 
     @Test
     public void testSouthMainFreightPipelineMovesTogether() {
@@ -679,7 +697,9 @@ public class InterlockingImpl_Test {
         assertEquals("Back", interlocking.getSection(3));
     }
 
+    // =========================================================
     // COLLISION / DEADLOCK SAFETY TESTS
+    // =========================================================
 
     @Test
     public void testTrainCannotMoveIntoOccupiedSectionIfOccupantNotMoving() {
@@ -756,7 +776,9 @@ public class InterlockingImpl_Test {
         assertEquals(11, interlocking.getTrain("North"));
     }
 
+    // =========================================================
     // MIXED PASSENGER + FREIGHT TESTS
+    // =========================================================
 
     @Test
     public void testIndependentPassengerAndMainFreightMovesCanOccurTogether() {
@@ -807,7 +829,68 @@ public class InterlockingImpl_Test {
         assertEquals(7, interlocking.getTrain("MainNorth"));
     }
 
+    // =========================================================
+    // GRADESCOPE CONFLICT REGRESSION TESTS
+    // =========================================================
+
+    @Test
+    public void testTwoTrainsCompetingForVacatedSixBothWait() {
+        interlocking.addTrain("Front", 9, 2);
+        interlocking.moveTrains(new String[]{"Front"});
+        assertEquals(6, interlocking.getTrain("Front"));
+
+        interlocking.addTrain("From9", 9, 2);
+        interlocking.addTrain("From10", 10, 2);
+
+        int moved = interlocking.moveTrains(
+                new String[]{"Front", "From9", "From10"});
+
+        assertEquals(1, moved);
+        assertEquals(2, interlocking.getTrain("Front"));
+        assertEquals(9, interlocking.getTrain("From9"));
+        assertEquals(10, interlocking.getTrain("From10"));
+    }
+
+    @Test
+    public void testOpposingMainFreightBothBlockedFromSectionSeven() {
+        interlocking.addTrain("South", 3, 11);
+        interlocking.addTrain("North", 11, 3);
+
+        int moved = interlocking.moveTrains(
+                new String[]{"South", "North"});
+
+        assertEquals(0, moved);
+        assertEquals(3, interlocking.getTrain("South"));
+        assertEquals(11, interlocking.getTrain("North"));
+        assertNull(interlocking.getSection(7));
+    }
+
+    @Test
+    public void testWorkshopAndMainTrainBothBlockedWhenCompetingForThree() {
+        interlocking.addTrain("AtThree", 11, 3);
+        interlocking.moveTrains(new String[]{"AtThree"});
+        interlocking.moveTrains(new String[]{"AtThree"});
+        assertEquals(3, interlocking.getTrain("AtThree"));
+
+        interlocking.addTrain("MainFollower", 11, 3);
+        interlocking.moveTrains(new String[]{"MainFollower"});
+        assertEquals(7, interlocking.getTrain("MainFollower"));
+
+        interlocking.addTrain("Workshop", 4, 3);
+
+        int moved = interlocking.moveTrains(
+                new String[]{"Workshop", "AtThree", "MainFollower"});
+
+        assertEquals(1, moved);
+        assertEquals(-1, interlocking.getTrain("AtThree"));
+        assertEquals(4, interlocking.getTrain("Workshop"));
+        assertEquals(7, interlocking.getTrain("MainFollower"));
+        assertNull(interlocking.getSection(3));
+    }
+
+    // =========================================================
     // STATE CONSISTENCY TESTS
+    // =========================================================
 
     @Test
     public void testSectionStateMatchesTrainStateAfterMovement() {

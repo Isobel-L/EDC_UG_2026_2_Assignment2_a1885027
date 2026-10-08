@@ -86,3 +86,14 @@
 - Removed the earlier assumption that opposing freight trains must be rejected during addTrain(), based on Gradescope scenarios that successfully construct opposing freight traffic
 - Expanded the JUnit test suite from 51 to 63 tests, including Gradescope-style passenger and freight pipeline scenarios, opposing freight traffic, simultaneous exits and movements, and collision/deadlock cases
 - Recompiled and ran the complete local JUnit suite successfully with all 63 tests passing
+
+## 9 October 2026
+- Reviewed the 164/175 Gradescope result and analysed the remaining visible failures
+- Identified a common arbitration issue: when multiple trains simultaneously requested the same destination section, the implementation previously allowed the first requested train to proceed
+- Updated destination conflict handling so that if two or more trains claim the same section in one moveTrains() event, all conflicting trains remain stationary
+- Added regression tests reproducing the Gradescope scenarios involving:
+  - passenger trains from Sections 9 and 10 competing for Section 6
+  - opposing freight trains competing for Section 7
+  - freight trains competing for a newly vacated Section 3
+- Updated existing passenger junction tests to remove the earlier first-requested-wins assumption
+- Recompiled and ran the expanded local JUnit suite successfully: 66/66 tests passed
